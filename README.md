@@ -45,7 +45,7 @@ bun test
 
 ```jsonc
 {
-  "plugins": ["/Users/sutie/user-message"]
+  "plugins": ["/path/to/opencode-user-message"]
 }
 ```
 
