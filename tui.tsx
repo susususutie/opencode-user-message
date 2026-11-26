@@ -4,14 +4,7 @@ import type { SessionMessageUser } from "@opencode/client"
 import type { Renderable } from "@opentui/core"
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js"
 import { mockNodes } from "./mock"
-import {
-  fullTimeLabel,
-  groupMessages,
-  isUserMessage,
-  timeLabel,
-  toNode,
-  type UserMessageNode,
-} from "./timeline"
+import { isUserMessage, timestamp, toNode, type UserMessageNode } from "./timeline"
 
 // 调试时改成 true，用 mock.ts 的数据查看不同时间段的真实展示效果。
 const MOCK = false // 调试时改成 true
@@ -137,6 +130,7 @@ export function UserMessageSidebar(props: { context: Plugin.Context; sessionID: 
   const [order, updateOrder] = props.context.storage.store("order", { initial: { newest: false } })
   const [pool, setPool] = createSignal<Map<string, UserMessageNode>>(new Map())
   const [current, setCurrent] = createSignal("")
+  const [now, setNow] = createSignal(Date.now())
   const useMock = () => props.mock ?? MOCK
 
   const realNodes = createMemo(() =>
@@ -146,8 +140,11 @@ export function UserMessageSidebar(props: { context: Plugin.Context; sessionID: 
   // MOCK 只影响展示，真实数据和滚动锚点始终按会话计算。
   const nodes = createMemo(() => (useMock() ? mockNodes(Date.now()) : realNodes()))
   const newest = createMemo(() => order.newest !== false)
-  // shortcut: 分组在消息变化时计算，TUI 跨零点长开时日期标签要等下一条消息才刷新
-  const groups = createMemo(() => groupMessages(nodes(), Date.now(), newest() ? "newest" : "oldest"))
+  const rows = createMemo(() =>
+    [...nodes()].sort((a, b) =>
+      newest() ? b.created - a.created || b.id.localeCompare(a.id) : a.created - b.created || a.id.localeCompare(b.id),
+    ),
+  )
 
   const hostUsers = (sessionID: string) => {
     try {
@@ -158,6 +155,8 @@ export function UserMessageSidebar(props: { context: Plugin.Context; sessionID: 
   }
 
   const mergeNodes = (updates: readonly UserMessageNode[]) => {
+    // 新消息到达时刷新 now，让跨零点后的“今天”判定立即生效。
+    if (updates.some((node) => !pool().has(node.id))) setNow(Date.now())
     setPool((previous) => {
       let next: Map<string, UserMessageNode> | undefined
       for (const node of updates) {
@@ -378,7 +377,7 @@ export function UserMessageSidebar(props: { context: Plugin.Context; sessionID: 
       draft.newest = next
     }).catch((error) => console.error("Failed to persist user message order", error))
     props.context.ui.toast.show({
-      message: next ? "Newest first · labels above" : "Oldest first · labels below",
+      message: next ? "Newest first" : "Oldest first",
     })
   }
 
@@ -480,70 +479,46 @@ export function UserMessageSidebar(props: { context: Plugin.Context; sessionID: 
             <text
               flexShrink={0}
               fg={theme.text.muted}
+              // 左侧留出两格，扩大这个单字符按钮的点击区域。
+              paddingLeft={2}
               onMouseDown={(event) => {
                 event.stopPropagation()
                 toggleOrder()
               }}
             >
-              {newest() ? "↓" : "↑"}
+              {newest() ? "↑" : "↓"}
             </text>
           </Show>
         </box>
         <Show when={nodes().length <= 2 || view.open}>
-          <For each={groups()}>
-            {(group) => (
-              <box>
-                <Show when={groups().length > 1 && newest() && !group.today}>
-                  <box flexDirection="row" gap={1} minWidth={0}>
-                    <text flexShrink={0} fg={theme.text.faint}>
-                      ──
-                    </text>
-                    <text fg={theme.text.muted} wrapMode="none" truncate flexGrow={1} flexShrink={1} minWidth={0}>
-                      {group.label}
-                    </text>
-                  </box>
-                </Show>
-                <For each={group.nodes}>
-                  {(node) => (
-                    <box flexDirection="row" gap={1} minWidth={0} onMouseUp={() => void jump(node)}>
-                      <text
-                        flexShrink={0}
-                        fg={current() === node.id ? theme.text.feedback.success.base : theme.text.muted}
-                      >
-                        •
-                      </text>
-                      <text
-                        fg={current() === node.id ? theme.text.feedback.success.base : theme.text.base}
-                        wrapMode="none"
-                        truncate
-                        flexGrow={1}
-                        flexShrink={1}
-                        minWidth={0}
-                      >
-                        <Show when={current() === node.id} fallback={node.summary}>
-                          <b>{node.summary}</b>
-                        </Show>
-                      </text>
-                      <text
-                        fg={current() === node.id ? theme.text.feedback.success.base : theme.text.muted}
-                        wrapMode="none"
-                        flexShrink={0}
-                      >
-                        {group.old ? fullTimeLabel(node.created) : timeLabel(node.created)}
-                      </text>
-                    </box>
-                  )}
-                </For>
-                <Show when={groups().length > 1 && !newest() && !group.today}>
-                  <box flexDirection="row" gap={1} minWidth={0}>
-                    <text flexShrink={0} fg={theme.text.faint}>
-                      ──
-                    </text>
-                    <text fg={theme.text.muted} wrapMode="none" truncate flexGrow={1} flexShrink={1} minWidth={0}>
-                      {group.label}
-                    </text>
-                  </box>
-                </Show>
+          <For each={rows()}>
+            {(node) => (
+              <box flexDirection="row" gap={1} minWidth={0} onMouseUp={() => void jump(node)}>
+                <text
+                  flexShrink={0}
+                  fg={current() === node.id ? theme.text.feedback.success.base : theme.text.muted}
+                >
+                  •
+                </text>
+                <text
+                  fg={current() === node.id ? theme.text.feedback.success.base : theme.text.base}
+                  wrapMode="none"
+                  truncate
+                  flexGrow={1}
+                  flexShrink={1}
+                  minWidth={0}
+                >
+                  <Show when={current() === node.id} fallback={node.summary}>
+                    <b>{node.summary}</b>
+                  </Show>
+                </text>
+                <text
+                  fg={current() === node.id ? theme.text.feedback.success.base : theme.text.muted}
+                  wrapMode="none"
+                  flexShrink={0}
+                >
+                  {timestamp(node.created, now())}
+                </text>
               </box>
             )}
           </For>

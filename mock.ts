@@ -10,7 +10,7 @@ interface MockSpec {
   readonly files?: number
 }
 
-/** 覆盖今天、最近几天、7 天边界和 7 天以前的各种情况。 */
+/** 覆盖今天与跨天时间戳的各种情况。 */
 const SPECS: readonly MockSpec[] = [
   { daysAgo: 0, minutesAgo: 3, text: "实际使用发现了两个问题：1. 侧栏太靠下；2. 数量显示规则不符合预期" },
   { daysAgo: 0, minutesAgo: 18, text: "继续" },

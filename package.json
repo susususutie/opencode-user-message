@@ -1,6 +1,6 @@
 {
   "name": "opencode-user-message",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "OpenCode TUI plugin: list the current session's user messages in the sidebar and jump to any of them",
   "type": "module",
   "license": "MIT",
@@ -23,6 +23,7 @@
     "tui.tsx",
     "timeline.ts",
     "mock.ts",
+    "assets",
     "README.md",
     "LICENSE"
   ],
